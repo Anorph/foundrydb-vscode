@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { FoundryDBClient, Service } from "../api/client";
+import { FoundryDBClient, FoundryDBError, Service } from "../api/client";
 
 // ---- Node types ----
 
@@ -200,16 +200,37 @@ export class ServiceTreeProvider implements vscode.TreeDataProvider<ServiceNode>
       }
       return nodes;
     } catch (err) {
-      vscode.window.showErrorMessage(`FoundryDB: Failed to load services — ${String(err)}`);
-      return [
-        new ServiceNode({
-          kind: "group",
-          label: "Error loading services",
-          collapsibleState: vscode.TreeItemCollapsibleState.None,
-          iconPath: new vscode.ThemeIcon("error"),
-          tooltip: String(err),
-        }),
-      ];
+      let errorLabel = "Failed to load services — click to retry";
+      if (err instanceof FoundryDBError) {
+        if (err.statusCode === 401) {
+          errorLabel = "Authentication failed — check settings and click to retry";
+        } else if (err.statusCode === 404) {
+          errorLabel = "API endpoint not found — check API URL and click to retry";
+        } else {
+          errorLabel = `API error (${err.statusCode}) — click to retry`;
+        }
+      } else {
+        const msg = String(err);
+        if (msg.includes("ECONNREFUSED") || msg.includes("ENOTFOUND") || msg.includes("fetch failed")) {
+          errorLabel = "Cannot connect to FoundryDB API — click to retry";
+        } else if (msg.includes("ETIMEDOUT") || msg.includes("timeout")) {
+          errorLabel = "Connection timed out — click to retry";
+        }
+      }
+
+      const retryNode = new ServiceNode({
+        kind: "group",
+        label: errorLabel,
+        collapsibleState: vscode.TreeItemCollapsibleState.None,
+        iconPath: new vscode.ThemeIcon("error"),
+        tooltip: String(err),
+      });
+      retryNode.command = {
+        command: "foundrydb.refreshServices",
+        title: "Retry",
+        arguments: [],
+      };
+      return [retryNode];
     }
   }
 

@@ -1,7 +1,39 @@
 import * as vscode from "vscode";
 import { ServiceTreeProvider, ServiceNode } from "../providers/serviceTreeProvider";
 import { openServiceDetailPanel } from "../views/serviceDetailPanel";
-import { buildConnectionString } from "../api/client";
+import { buildConnectionString, FoundryDBError } from "../api/client";
+
+// ---- Error classification ----
+
+function classifyError(err: unknown): string {
+  if (err instanceof FoundryDBError) {
+    if (err.statusCode === 401) {
+      return "Authentication failed. Check your username and password in settings.";
+    }
+    if (err.statusCode === 404) {
+      return "Service not found.";
+    }
+    if (err.statusCode === 408 || err.statusCode === 504) {
+      return "Request timed out. The FoundryDB API may be unavailable.";
+    }
+    return `FoundryDB API error (${err.statusCode}). Please try again.`;
+  }
+
+  const msg = String(err);
+  if (
+    msg.includes("ECONNREFUSED") ||
+    msg.includes("ENOTFOUND") ||
+    msg.includes("fetch failed") ||
+    msg.includes("connect ETIMEDOUT")
+  ) {
+    return "Cannot connect to FoundryDB API. Check your connection settings.";
+  }
+  if (msg.includes("ETIMEDOUT") || msg.includes("timeout")) {
+    return "Request timed out. The FoundryDB API may be unavailable.";
+  }
+
+  return "An unexpected error occurred. Please try again.";
+}
 
 export function registerCommands(
   context: vscode.ExtensionContext,
@@ -74,7 +106,11 @@ export function registerCommands(
         );
         return;
       }
-      await openServiceDetailPanel(context, service, client);
+      try {
+        await openServiceDetailPanel(context, service, client);
+      } catch (err) {
+        vscode.window.showErrorMessage(`FoundryDB: Failed to open service detail — ${classifyError(err)}`);
+      }
     })
   );
 
@@ -111,7 +147,14 @@ export function registerCommands(
         },
         async () => {
           try {
-            const usersResp = await client.listUsers(service.id);
+            let usersResp;
+            try {
+              usersResp = await client.listUsers(service.id);
+            } catch (err) {
+              vscode.window.showErrorMessage(`FoundryDB: Failed to fetch users — ${classifyError(err)}`);
+              return;
+            }
+
             const users = usersResp.users ?? [];
             if (users.length === 0) {
               vscode.window.showWarningMessage("FoundryDB: No database users found.");
@@ -131,7 +174,18 @@ export function registerCommands(
               username = picked;
             }
 
-            const pwResp = await client.revealPassword(service.id, username);
+            let pwResp;
+            try {
+              pwResp = await client.revealPassword(service.id, username);
+            } catch (err) {
+              if (err instanceof FoundryDBError && err.statusCode === 404) {
+                vscode.window.showErrorMessage(`FoundryDB: Could not reveal password — user "${username}" was not found.`);
+              } else {
+                vscode.window.showErrorMessage(`FoundryDB: Could not reveal password — ${classifyError(err)}`);
+              }
+              return;
+            }
+
             const connStr = buildConnectionString(service, pwResp.password, username);
 
             if (!connStr) {
@@ -142,7 +196,7 @@ export function registerCommands(
             await vscode.env.clipboard.writeText(connStr);
             vscode.window.showInformationMessage(`FoundryDB: Connection string copied to clipboard.`);
           } catch (err) {
-            vscode.window.showErrorMessage(`FoundryDB: Failed to get connection string — ${String(err)}`);
+            vscode.window.showErrorMessage(`FoundryDB: Failed to get connection string — ${classifyError(err)}`);
           }
         }
       );
@@ -185,10 +239,10 @@ export function registerCommands(
             const result = await client.triggerBackup(service.id);
             progress.report({ increment: 100 });
             vscode.window.showInformationMessage(
-              `FoundryDB: Backup triggered successfully (ID: ${result.id}, status: ${result.status}).`
+              `FoundryDB: Backup started for "${service.name}" (ID: ${result.id}, status: ${result.status}).`
             );
           } catch (err) {
-            vscode.window.showErrorMessage(`FoundryDB: Failed to trigger backup — ${String(err)}`);
+            vscode.window.showErrorMessage(`FoundryDB: Failed to trigger backup — ${classifyError(err)}`);
           }
         }
       );

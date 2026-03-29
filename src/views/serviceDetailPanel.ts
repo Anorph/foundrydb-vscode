@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import {
   FoundryDBClient,
+  FoundryDBError,
   Service,
   DatabaseUser,
   Metrics,
@@ -8,6 +9,26 @@ import {
   buildConnectionString,
   buildEnvVarsString,
 } from "../api/client";
+
+function summarizeError(err: unknown): string {
+  if (err instanceof FoundryDBError) {
+    if (err.statusCode === 401) {
+      return "Authentication failed";
+    }
+    if (err.statusCode === 404) {
+      return "Not found";
+    }
+    return `API error (${err.statusCode})`;
+  }
+  const msg = String(err);
+  if (msg.includes("ECONNREFUSED") || msg.includes("ENOTFOUND") || msg.includes("fetch failed")) {
+    return "Cannot connect to FoundryDB API";
+  }
+  if (msg.includes("ETIMEDOUT") || msg.includes("timeout")) {
+    return "Request timed out";
+  }
+  return "Unexpected error";
+}
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) {
@@ -55,11 +76,18 @@ function metricBar(value: number | undefined, label: string): string {
     </div>`;
 }
 
+function sectionError(message: string): string {
+  return `<div class="section-error"><span class="section-error-icon">$(error)</span> ${escapeHtml(message)}</div>`;
+}
+
 function getWebviewContent(
   service: Service,
   users: DatabaseUser[],
+  usersError: string | null,
   metrics: Metrics,
+  metricsError: string | null,
   backups: Backup[],
+  backupsError: string | null,
   nonce: string
 ): string {
   const domain = service.dns_records?.[0]?.full_domain ?? "";
@@ -70,35 +98,37 @@ function getWebviewContent(
     ? `<pre class="env-block">${escapeHtml(buildEnvVarsString(service, "****", users[0]?.username ?? "user"))}</pre>`
     : `<em>DNS record not yet available</em>`;
 
-  const usersHtml =
-    users.length === 0
-      ? `<tr><td colspan="3"><em>No users</em></td></tr>`
-      : users
-          .map(
-            (u) =>
-              `<tr>
-            <td>${escapeHtml(u.username)}</td>
-            <td>${escapeHtml(u.privileges ?? "")}</td>
-            <td>${escapeHtml(u.created_at ? new Date(u.created_at).toLocaleDateString() : "")}</td>
-          </tr>`
-          )
-          .join("");
+  const usersHtml = usersError
+    ? `<tr><td colspan="3"><em class="error-text">Failed to load users: ${escapeHtml(usersError)}</em></td></tr>`
+    : users.length === 0
+    ? `<tr><td colspan="3"><em>No users</em></td></tr>`
+    : users
+        .map(
+          (u) =>
+            `<tr>
+          <td>${escapeHtml(u.username)}</td>
+          <td>${escapeHtml(u.privileges ?? "")}</td>
+          <td>${escapeHtml(u.created_at ? new Date(u.created_at).toLocaleDateString() : "")}</td>
+        </tr>`
+        )
+        .join("");
 
-  const backupsHtml =
-    backups.length === 0
-      ? `<tr><td colspan="4"><em>No backups</em></td></tr>`
-      : backups
-          .slice(0, 10)
-          .map(
-            (b) =>
-              `<tr>
-            <td>${escapeHtml(b.backup_type)}</td>
-            <td><span class="badge ${b.status === "completed" ? "badge-running" : b.status === "failed" ? "badge-error" : "badge-provisioning"}">${escapeHtml(b.status)}</span></td>
-            <td>${b.size_bytes ? formatBytes(b.size_bytes) : "—"}</td>
-            <td>${escapeHtml(b.created_at ? new Date(b.created_at).toLocaleDateString() : "")}</td>
-          </tr>`
-          )
-          .join("");
+  const backupsHtml = backupsError
+    ? `<tr><td colspan="4"><em class="error-text">Failed to load backups: ${escapeHtml(backupsError)}</em></td></tr>`
+    : backups.length === 0
+    ? `<tr><td colspan="4"><em>No backups</em></td></tr>`
+    : backups
+        .slice(0, 10)
+        .map(
+          (b) =>
+            `<tr>
+          <td>${escapeHtml(b.backup_type)}</td>
+          <td><span class="badge ${b.status === "completed" ? "badge-running" : b.status === "failed" ? "badge-error" : "badge-provisioning"}">${escapeHtml(b.status)}</span></td>
+          <td>${b.size_bytes ? formatBytes(b.size_bytes) : "—"}</td>
+          <td>${escapeHtml(b.created_at ? new Date(b.created_at).toLocaleDateString() : "")}</td>
+        </tr>`
+        )
+        .join("");
 
   const storageUsed = metrics.storage_used_bytes;
   const storageTotal = metrics.storage_total_bytes;
@@ -160,6 +190,7 @@ function getWebviewContent(
     .bar-warning { background: #fbbf24; }
     .bar-danger { background: #f87171; }
     .section-label { font-size: 11px; opacity: 0.5; margin-bottom: 6px; }
+    .error-text { color: #f87171; font-size: 12px; }
   </style>
 </head>
 <body>
@@ -187,11 +218,13 @@ function getWebviewContent(
 
     <div class="card">
       <h2>Metrics</h2>
-      ${metricBar(metrics.cpu_usage_percent, "CPU")}
+      ${metricsError
+        ? `<div class="error-text">Failed to load metrics: ${escapeHtml(metricsError)}</div>`
+        : `${metricBar(metrics.cpu_usage_percent, "CPU")}
       ${metricBar(metrics.memory_usage_percent, "Memory")}
       ${metricBar(storagePct, "Storage")}
       ${storageUsed !== undefined && storageTotal ? `<div class="conn-note">${formatBytes(storageUsed)} / ${formatBytes(storageTotal)} used</div>` : ""}
-      ${metrics.connections !== undefined ? `<div class="metric"><span class="metric-label">Connections: </span><strong>${metrics.connections}</strong></div>` : ""}
+      ${metrics.connections !== undefined ? `<div class="metric"><span class="metric-label">Connections: </span><strong>${metrics.connections}</strong></div>` : ""}`}
     </div>
 
     <div class="card card-full">
@@ -271,7 +304,7 @@ export async function openServiceDetailPanel(
 
   panel.webview.html = getLoadingHtml(service.name);
 
-  // Load data in parallel
+  // Load data in parallel; use allSettled so one failure doesn't blank the whole panel
   const [usersResult, metricsResult, backupsResult] = await Promise.allSettled([
     client.listUsers(service.id),
     client.getMetrics(service.id),
@@ -279,11 +312,16 @@ export async function openServiceDetailPanel(
   ]);
 
   const users = usersResult.status === "fulfilled" ? (usersResult.value.users ?? []) : [];
+  const usersError = usersResult.status === "rejected" ? summarizeError(usersResult.reason) : null;
+
   const metrics = metricsResult.status === "fulfilled" ? metricsResult.value : {};
+  const metricsError = metricsResult.status === "rejected" ? summarizeError(metricsResult.reason) : null;
+
   const backups = backupsResult.status === "fulfilled" ? (backupsResult.value.backups ?? []) : [];
+  const backupsError = backupsResult.status === "rejected" ? summarizeError(backupsResult.reason) : null;
 
   const nonce = generateNonce();
-  panel.webview.html = getWebviewContent(service, users, metrics, backups, nonce);
+  panel.webview.html = getWebviewContent(service, users, usersError, metrics, metricsError, backups, backupsError, nonce);
 }
 
 function getLoadingHtml(name: string): string {

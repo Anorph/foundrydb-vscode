@@ -2,6 +2,18 @@ import * as https from "https";
 import * as http from "http";
 import { URL } from "url";
 
+// ---- Typed error ----
+
+export class FoundryDBError extends Error {
+  public readonly statusCode: number;
+
+  constructor(statusCode: number, message: string) {
+    super(message);
+    this.name = "FoundryDBError";
+    this.statusCode = statusCode;
+  }
+}
+
 // ---- Domain types ----
 
 export interface Service {
@@ -114,7 +126,7 @@ export class FoundryDBClient {
               resolve({} as T);
             }
           } else {
-            reject(new Error(`HTTP ${res.statusCode}: ${data.slice(0, 200)}`));
+            reject(new FoundryDBError(res.statusCode ?? 0, `HTTP ${res.statusCode}: ${data.slice(0, 200)}`));
           }
         });
       });
