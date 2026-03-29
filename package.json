@@ -1,0 +1,132 @@
+{
+  "name": "foundrydb",
+  "displayName": "FoundryDB",
+  "description": "Manage FoundryDB managed database services from VS Code",
+  "version": "0.1.0",
+  "publisher": "anorph",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["Other"],
+  "keywords": ["database", "postgresql", "mysql", "mongodb", "valkey", "kafka", "foundrydb"],
+  "activationEvents": [
+    "onView:foundrydbExplorer"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "foundrydb",
+          "title": "FoundryDB",
+          "icon": "resources/icons/foundrydb.svg"
+        }
+      ]
+    },
+    "views": {
+      "foundrydb": [
+        {
+          "id": "foundrydbExplorer",
+          "name": "Services",
+          "icon": "resources/icons/foundrydb.svg",
+          "contextualTitle": "FoundryDB"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "foundrydb.addConnection",
+        "title": "FoundryDB: Add Connection",
+        "icon": "$(add)"
+      },
+      {
+        "command": "foundrydb.refreshServices",
+        "title": "FoundryDB: Refresh Services",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "foundrydb.openServiceDetail",
+        "title": "FoundryDB: Open Service Details",
+        "icon": "$(info)"
+      },
+      {
+        "command": "foundrydb.copyConnectionString",
+        "title": "FoundryDB: Copy Connection String",
+        "icon": "$(copy)"
+      },
+      {
+        "command": "foundrydb.triggerBackup",
+        "title": "FoundryDB: Trigger Backup",
+        "icon": "$(database)"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "foundrydb.addConnection",
+          "when": "view == foundrydbExplorer",
+          "group": "navigation@1"
+        },
+        {
+          "command": "foundrydb.refreshServices",
+          "when": "view == foundrydbExplorer",
+          "group": "navigation@2"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "foundrydb.openServiceDetail",
+          "when": "view == foundrydbExplorer && viewItem == service",
+          "group": "inline@1"
+        },
+        {
+          "command": "foundrydb.copyConnectionString",
+          "when": "view == foundrydbExplorer && viewItem == service",
+          "group": "service@1"
+        },
+        {
+          "command": "foundrydb.triggerBackup",
+          "when": "view == foundrydbExplorer && viewItem == service",
+          "group": "service@2"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "FoundryDB",
+      "properties": {
+        "foundrydb.apiUrl": {
+          "type": "string",
+          "default": "https://api.foundrydb.com",
+          "description": "FoundryDB API base URL"
+        },
+        "foundrydb.username": {
+          "type": "string",
+          "default": "",
+          "description": "FoundryDB API username"
+        },
+        "foundrydb.password": {
+          "type": "string",
+          "default": "",
+          "description": "FoundryDB API password",
+          "markdownDeprecationMessage": "Consider using VS Code's secret storage for passwords."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "eslint src --ext ts"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.3.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/anorph/foundrydb-vscode.git"
+  },
+  "license": "MIT"
+}
