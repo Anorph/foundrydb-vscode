@@ -3,6 +3,18 @@ import { ServiceTreeProvider, ServiceNode } from "../providers/serviceTreeProvid
 import { openServiceDetailPanel } from "../views/serviceDetailPanel";
 import { buildConnectionString, FoundryDBError } from "../api/client";
 
+// ---- Version options per database type ----
+
+export const DB_VERSIONS: Record<string, string[]> = {
+  postgresql: ["14", "15", "16", "17", "18"],
+  mysql: ["8.4"],
+  mongodb: ["6.0", "7.0", "8.0"],
+  valkey: ["7.2", "8.0", "8.1", "9.0"],
+  kafka: ["3.6", "3.7", "3.8", "3.9", "4.0"],
+  opensearch: ["2.19"],
+  mssql: ["4.8"],
+};
+
 // ---- Error classification ----
 
 function classifyError(err: unknown): string {
@@ -200,6 +212,71 @@ export function registerCommands(
           }
         }
       );
+    })
+  );
+
+  // Switch Organization
+  context.subscriptions.push(
+    vscode.commands.registerCommand("foundrydb.switchOrganization", async () => {
+      const client = treeProvider.getClient();
+      if (!client) {
+        vscode.window.showWarningMessage(
+          "FoundryDB: No connection configured. Run 'FoundryDB: Add Connection' first."
+        );
+        return;
+      }
+
+      let orgs: { id: string; name: string }[] = [];
+      try {
+        const resp = await client.listOrganizations();
+        orgs = resp.organizations ?? [];
+      } catch (err) {
+        vscode.window.showErrorMessage(`FoundryDB: Failed to load organizations — ${classifyError(err)}`);
+        return;
+      }
+
+      if (orgs.length === 0) {
+        vscode.window.showInformationMessage("FoundryDB: No organizations found for this account.");
+        return;
+      }
+
+      const config = vscode.workspace.getConfiguration("foundrydb");
+      const currentOrgId = config.get<string>("organizationId") ?? "";
+
+      const items: vscode.QuickPickItem[] = [
+        {
+          label: "$(circle-slash) All organizations (no filter)",
+          description: currentOrgId === "" ? "(current)" : undefined,
+        },
+        ...orgs.map((org) => ({
+          label: org.name,
+          description: org.id === currentOrgId ? "(current)" : undefined,
+          detail: org.id,
+        })),
+      ];
+
+      const picked = await vscode.window.showQuickPick(items, {
+        placeHolder: "Select an organization to switch to",
+        matchOnDescription: true,
+        matchOnDetail: true,
+      });
+
+      if (picked === undefined) {
+        return;
+      }
+
+      if (picked.label.startsWith("$(circle-slash)")) {
+        await config.update("organizationId", "", vscode.ConfigurationTarget.Global);
+        vscode.window.showInformationMessage("FoundryDB: Organization filter cleared.");
+      } else {
+        const selectedOrg = orgs.find((o) => o.name === picked.label);
+        if (selectedOrg) {
+          await config.update("organizationId", selectedOrg.id, vscode.ConfigurationTarget.Global);
+          vscode.window.showInformationMessage(`FoundryDB: Switched to organization "${selectedOrg.name}".`);
+        }
+      }
+
+      treeProvider.refresh();
     })
   );
 

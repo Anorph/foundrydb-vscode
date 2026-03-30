@@ -55,6 +55,10 @@ function dbIcon(dbType: string): vscode.ThemeIcon {
       return new vscode.ThemeIcon("zap");
     case "kafka":
       return new vscode.ThemeIcon("broadcast");
+    case "opensearch":
+      return new vscode.ThemeIcon("search");
+    case "mssql":
+      return new vscode.ThemeIcon("database");
     default:
       return new vscode.ThemeIcon("database");
   }
@@ -92,6 +96,10 @@ function groupDbType(dbType: string): string {
       return "Valkey";
     case "kafka":
       return "Kafka";
+    case "opensearch":
+      return "OpenSearch";
+    case "mssql":
+      return "MSSQL";
     default:
       return dbType;
   }
@@ -115,9 +123,10 @@ export class ServiceTreeProvider implements vscode.TreeDataProvider<ServiceNode>
     const apiUrl = config.get<string>("apiUrl") ?? "https://api.foundrydb.com";
     const username = config.get<string>("username") ?? "";
     const password = config.get<string>("password") ?? "";
+    const orgId = config.get<string>("organizationId") || undefined;
 
     if (username && password) {
-      this.client = new FoundryDBClient(apiUrl, username, password);
+      this.client = new FoundryDBClient(apiUrl, username, password, orgId);
     } else {
       this.client = null;
     }

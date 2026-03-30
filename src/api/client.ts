@@ -38,6 +38,16 @@ export interface ServicesResponse {
   services: Service[];
 }
 
+export interface Organization {
+  id: string;
+  name: string;
+  slug?: string;
+}
+
+export interface OrganizationsResponse {
+  organizations: Organization[];
+}
+
 export interface DatabaseUser {
   username: string;
   privileges: string;
@@ -86,27 +96,41 @@ export interface TriggerBackupResponse {
 export class FoundryDBClient {
   private readonly baseUrl: string;
   private readonly authHeader: string;
+  private organizationId: string | undefined;
 
-  constructor(apiUrl: string, username: string, password: string) {
+  constructor(apiUrl: string, username: string, password: string, organizationId?: string) {
     this.baseUrl = apiUrl.replace(/\/$/, "");
     const credentials = Buffer.from(`${username}:${password}`).toString("base64");
     this.authHeader = `Basic ${credentials}`;
+    this.organizationId = organizationId || undefined;
+  }
+
+  setOrganizationId(orgId: string | undefined): void {
+    this.organizationId = orgId;
+  }
+
+  getOrganizationId(): string | undefined {
+    return this.organizationId;
   }
 
   private request<T>(method: string, path: string, body?: unknown): Promise<T> {
     return new Promise((resolve, reject) => {
       const url = new URL(`${this.baseUrl}${path}`);
       const isHttps = url.protocol === "https:";
+      const headers: Record<string, string> = {
+        Authorization: this.authHeader,
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      };
+      if (this.organizationId) {
+        headers["X-Active-Org-ID"] = this.organizationId;
+      }
       const options: http.RequestOptions = {
         hostname: url.hostname,
         port: url.port || (isHttps ? 443 : 80),
         path: url.pathname + url.search,
         method,
-        headers: {
-          Authorization: this.authHeader,
-          "Content-Type": "application/json",
-          Accept: "application/json",
-        },
+        headers,
       };
 
       const bodyStr = body !== undefined ? JSON.stringify(body) : undefined;
@@ -170,6 +194,10 @@ export class FoundryDBClient {
   triggerBackup(serviceId: string): Promise<TriggerBackupResponse> {
     return this.request<TriggerBackupResponse>("POST", `/managed-services/${serviceId}/backups`);
   }
+
+  listOrganizations(): Promise<OrganizationsResponse> {
+    return this.request<OrganizationsResponse>("GET", "/organizations");
+  }
 }
 
 // ---- Connection string builders ----
@@ -196,6 +224,10 @@ export function buildConnectionString(service: Service, password: string, userna
       return `rediss://${username}:${encodeURIComponent(password)}@${domain}:6380`;
     case "kafka":
       return `${domain}:9093`;
+    case "opensearch":
+      return `https://${username}:${encodeURIComponent(password)}@${domain}:9200`;
+    case "mssql":
+      return `Server=${domain},1433;Database=defaultdb;User Id=${username};Password=${password};Encrypt=True;TrustServerCertificate=False;`;
     default:
       return `${type}://${username}:${encodeURIComponent(password)}@${domain}`;
   }
@@ -234,6 +266,15 @@ export function buildEnvVarsString(service: Service, password: string, username:
       break;
     case "kafka":
       vars.push(`${type}_PORT=9093`);
+      break;
+    case "opensearch":
+      vars.push(`${type}_PORT=9200`);
+      vars.push(`${type}_SCHEME=https`);
+      break;
+    case "mssql":
+      vars.push(`${type}_PORT=1433`);
+      vars.push(`${type}_DB=defaultdb`);
+      vars.push(`${type}_ENCRYPT=true`);
       break;
   }
 

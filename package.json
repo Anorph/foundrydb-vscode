@@ -8,7 +8,7 @@
     "vscode": "^1.85.0"
   },
   "categories": ["Other"],
-  "keywords": ["database", "postgresql", "mysql", "mongodb", "valkey", "kafka", "foundrydb"],
+  "keywords": ["database", "postgresql", "mysql", "mongodb", "valkey", "kafka", "opensearch", "mssql", "foundrydb"],
   "activationEvents": [
     "onView:foundrydbExplorer"
   ],
@@ -58,6 +58,11 @@
         "command": "foundrydb.triggerBackup",
         "title": "FoundryDB: Trigger Backup",
         "icon": "$(database)"
+      },
+      {
+        "command": "foundrydb.switchOrganization",
+        "title": "FoundryDB: Switch Organization",
+        "icon": "$(organization)"
       }
     ],
     "menus": {
@@ -71,6 +76,11 @@
           "command": "foundrydb.refreshServices",
           "when": "view == foundrydbExplorer",
           "group": "navigation@2"
+        },
+        {
+          "command": "foundrydb.switchOrganization",
+          "when": "view == foundrydbExplorer",
+          "group": "navigation@3"
         }
       ],
       "view/item/context": [
@@ -109,6 +119,11 @@
           "default": "",
           "description": "FoundryDB API password",
           "markdownDeprecationMessage": "Consider using VS Code's secret storage for passwords."
+        },
+        "foundrydb.organizationId": {
+          "type": "string",
+          "default": "",
+          "description": "FoundryDB organization ID to scope API calls. When set, the X-Active-Org-ID header is sent with every request. Use 'FoundryDB: Switch Organization' to change this interactively."
         }
       }
     }

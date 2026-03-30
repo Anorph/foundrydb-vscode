@@ -17,7 +17,8 @@ export function activate(context: vscode.ExtensionContext): void {
       if (
         e.affectsConfiguration("foundrydb.apiUrl") ||
         e.affectsConfiguration("foundrydb.username") ||
-        e.affectsConfiguration("foundrydb.password")
+        e.affectsConfiguration("foundrydb.password") ||
+        e.affectsConfiguration("foundrydb.organizationId")
       ) {
         treeProvider.refresh();
       }
