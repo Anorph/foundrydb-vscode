@@ -51,7 +51,7 @@ If your account belongs to multiple organizations, use **FoundryDB: Switch Organ
 | MongoDB | 6.0, 7.0, 8.0 |
 | Valkey | 7.2, 8.0, 8.1, 9.0 |
 | Kafka | 3.6, 3.7, 3.8, 3.9, 4.0 |
-| OpenSearch | 2.19 |
+| OpenSearch | 2 |
 | MSSQL | 4.8 |
 
 ## Requirements
